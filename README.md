@@ -94,6 +94,20 @@ original local workspace. Inherited Inspector documentation describes that
 separate tool, not a bundled example. The incomplete Rust `gameplay` module
 declaration from the live workspace is also omitted until its implementation lands.
 
+## Community mods
+
+**Download and use mods at your own risk. We do not vet, audit or verify the
+safety of listed mods. A listing is not an endorsement.** Native mods execute
+code in the game process; review each mod's source, requirements and installation
+instructions before downloading or installing it.
+
+| Mod | Description | Requirements |
+| --- | --- | --- |
+| [Adaptive Triggers](https://github.com/DigitalEthosGlobalGaming/bb-modding-adaptive-triggers) | Input-driven DualSense L2/R2 resistance effects and configurable lightbar. | Integrated bbmod host with ABI 1.3 pad effects and a DualSense controller. Hardware/gameplay validation remains pending. |
+
+Mod authors can submit a pull request adding a repository link, a short
+description and compatibility requirements. Inclusion does not mean we vet it.
+
 ## Contribute and plan
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and pull requests, and
