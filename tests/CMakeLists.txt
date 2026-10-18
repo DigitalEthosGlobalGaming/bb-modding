@@ -1,3 +1,11 @@
+# Harnesses use assert() for checks and setup calls. Keep them active even
+# when testing the Release host; NDEBUG otherwise skips setup and can crash.
+if(MSVC)
+    add_compile_options(/UNDEBUG)
+else()
+    add_compile_options(-UNDEBUG)
+endif()
+
 add_library(test_mod SHARED test_mod.c)
 target_include_directories(test_mod PRIVATE ${PROJECT_SOURCE_DIR}/sdk/include)
 set_target_properties(test_mod PROPERTIES PREFIX "" OUTPUT_NAME "test_mod")
