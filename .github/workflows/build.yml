@@ -20,6 +20,7 @@ jobs:
           git clone --branch v4.1.1 --depth 1 --recurse-submodules https://github.com/zyantific/zydis.git /tmp/zydis
           cmake -S /tmp/zydis -B /tmp/zydis-build -DCMAKE_BUILD_TYPE=Release \
             -DZYDIS_BUILD_SHARED_LIB=OFF -DZYDIS_BUILD_EXAMPLES=OFF -DZYDIS_BUILD_TOOLS=OFF \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Doxygen=ON \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_INSTALL_PREFIX=/tmp/zydis-install
           cmake --build /tmp/zydis-build --parallel 4
           cmake --install /tmp/zydis-build
@@ -75,6 +76,7 @@ jobs:
           Run cmake @('-S', 'build/deps/zydis', '-B', 'build/deps/zydis-build', '-G', 'Ninja',
             '-DCMAKE_C_COMPILER=clang', '-DCMAKE_CXX_COMPILER=clang++', '-DCMAKE_BUILD_TYPE=Release',
             '-DZYDIS_BUILD_SHARED_LIB=OFF', '-DZYDIS_BUILD_EXAMPLES=OFF', '-DZYDIS_BUILD_TOOLS=OFF',
+            '-DCMAKE_DISABLE_FIND_PACKAGE_Doxygen=ON',
             "-DCMAKE_INSTALL_PREFIX=$prefix")
           Run cmake @('--build', 'build/deps/zydis-build', '--parallel', '4')
           Run cmake @('--install', 'build/deps/zydis-build')
