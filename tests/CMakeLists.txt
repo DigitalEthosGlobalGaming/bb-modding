@@ -1,3 +1,11 @@
+## Fixtures use assert for both setup calls and verification. Keep those calls
+## active in Release builds as well as Debug builds.
+if(MSVC)
+    add_compile_options(/UNDEBUG)
+else()
+    add_compile_options(-UNDEBUG)
+endif()
+
 add_library(test_mod SHARED test_mod.c)
 target_include_directories(test_mod PRIVATE ${PROJECT_SOURCE_DIR}/sdk/include)
 set_target_properties(test_mod PROPERTIES PREFIX "" OUTPUT_NAME "test_mod")
