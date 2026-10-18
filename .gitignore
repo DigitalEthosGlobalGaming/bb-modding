@@ -1,0 +1,16 @@
+build/
+target/
+*.o
+*.so
+*.dll
+modcache/
+build-win/
+build-tsan/
+out/
+dist/
+*.zip
+*.exe
+*.a
+*.lib
+*.pdb
+*.log

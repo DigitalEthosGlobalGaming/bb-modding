@@ -1,0 +1,128 @@
+add_library(test_mod SHARED test_mod.c)
+target_include_directories(test_mod PRIVATE ${PROJECT_SOURCE_DIR}/sdk/include)
+set_target_properties(test_mod PROPERTIES PREFIX "" OUTPUT_NAME "test_mod")
+
+add_executable(test_host test_host.c)
+target_link_libraries(test_host PRIVATE bbmod_host)
+if(NOT WIN32)
+    target_link_libraries(test_host PRIVATE pthread)
+endif()
+target_compile_definitions(test_host PRIVATE
+    TEST_MOD_PATH="$<TARGET_FILE:test_mod>")
+add_dependencies(test_host test_mod)
+
+add_test(NAME host COMMAND test_host)
+
+add_executable(test_regions test_regions.c)
+target_link_libraries(test_regions PRIVATE bbmod_host)
+target_include_directories(test_regions PRIVATE ${PROJECT_SOURCE_DIR}/host/src)
+add_test(NAME regions COMMAND test_regions)
+
+if(NOT WIN32)
+    add_executable(test_rust test_rust.c)
+    target_link_libraries(test_rust PRIVATE bbmod_host)
+    if(BBMOD_RUST_MOD AND BBMOD_RUST_MANIFEST)
+        add_test(NAME rust_mod COMMAND test_rust ${BBMOD_RUST_MOD} ${BBMOD_RUST_MANIFEST})
+    endif()
+endif()
+
+if(Zydis_FOUND)
+    add_library(test_inline_mod SHARED test_inline_mod.c)
+    target_include_directories(test_inline_mod PRIVATE ${PROJECT_SOURCE_DIR}/sdk/include)
+    set_target_properties(test_inline_mod PROPERTIES PREFIX "" OUTPUT_NAME "test_inline_mod")
+    add_executable(test_inline test_inline.c)
+    target_link_libraries(test_inline PRIVATE bbmod_host)
+    if(NOT WIN32)
+        target_link_libraries(test_inline PRIVATE pthread)
+    endif()
+    add_dependencies(test_inline test_inline_mod)
+    add_test(NAME inline_hooks_coop COMMAND test_inline $<TARGET_FILE:test_inline_mod> coop)
+    if(WIN32)
+        # Real SuspendThread + GetThreadContext, no cooperative stand-in.
+        add_test(NAME inline_hooks_os COMMAND test_inline $<TARGET_FILE:test_inline_mod> os)
+    endif()
+endif()
+
+add_library(test_net_mod SHARED test_net_mod.c)
+target_include_directories(test_net_mod PRIVATE ${PROJECT_SOURCE_DIR}/sdk/include)
+set_target_properties(test_net_mod PROPERTIES PREFIX "" OUTPUT_NAME "test_net_mod")
+add_executable(test_net test_net.c)
+target_link_libraries(test_net PRIVATE bbmod_host)
+add_dependencies(test_net test_net_mod)
+add_test(NAME modnet COMMAND test_net $<TARGET_FILE:test_net_mod>)
+
+if(Zydis_FOUND AND BBMOD_INSPECTOR_MOD)
+    add_executable(test_inspector test_inspector.c)
+    target_link_libraries(test_inspector PRIVATE bbmod_host)
+    add_test(NAME inspector COMMAND test_inspector ${BBMOD_INSPECTOR_MOD})
+endif()
+
+if(BBMOD_EXAMPLES_DIR)
+    add_executable(test_shared_input test_shared_input.c)
+    target_link_libraries(test_shared_input PRIVATE bbmod_host)
+    if(WIN32)
+        add_test(NAME shared_input COMMAND test_shared_input
+            ${BBMOD_EXAMPLES_DIR}/input_monitor.dll ${BBMOD_EXAMPLES_DIR}/input_counter.dll)
+    else()
+        add_test(NAME shared_input COMMAND test_shared_input
+            ${BBMOD_EXAMPLES_DIR}/libinput_monitor.so ${BBMOD_EXAMPLES_DIR}/libinput_counter.so)
+    endif()
+    # Cargo's Windows DLLs have no lib prefix, including when this C host
+    # is compiled with MinGW/CLANG64.
+    set(BBMOD_RUST_PREFIX "${CMAKE_SHARED_LIBRARY_PREFIX}")
+    if(WIN32)
+        set(BBMOD_RUST_PREFIX "")
+    endif()
+    add_executable(test_examples test_examples.c)
+    target_link_libraries(test_examples PRIVATE bbmod_host)
+    add_test(NAME example_mods COMMAND test_examples
+        ${BBMOD_EXAMPLES_DIR}/${BBMOD_RUST_PREFIX}live_patches${CMAKE_SHARED_LIBRARY_SUFFIX}
+        ${BBMOD_EXAMPLES_DIR}/${BBMOD_RUST_PREFIX}devtools${CMAKE_SHARED_LIBRARY_SUFFIX}
+        ${CMAKE_CURRENT_SOURCE_DIR}/data/Bloodborne.xml)
+endif()
+
+if(Zydis_FOUND AND BBMOD_RUST_HOOK_MOD)
+    add_executable(test_rust_hook test_rust_hook.c)
+    target_link_libraries(test_rust_hook PRIVATE bbmod_host)
+    add_test(NAME rust_detour COMMAND test_rust_hook ${BBMOD_RUST_HOOK_MOD})
+endif()
+
+if(WIN32)
+    add_executable(test_win_suspend test_win_suspend.c)
+    target_link_libraries(test_win_suspend PRIVATE bbmod_host)
+    target_include_directories(test_win_suspend PRIVATE ${PROJECT_SOURCE_DIR}/host/src)
+    add_test(NAME win_suspend COMMAND test_win_suspend)
+endif()
+
+add_library(test_crash_mod SHARED test_crash_mod.c)
+target_include_directories(test_crash_mod PRIVATE ${PROJECT_SOURCE_DIR}/sdk/include)
+set_target_properties(test_crash_mod PROPERTIES PREFIX "" OUTPUT_NAME "test_crash_mod")
+if(NOT WIN32)
+    # Real recovery needs a fault guard; bbport provides one on Windows (bb_longjmp).
+    add_executable(test_crash test_crash.c)
+    target_link_libraries(test_crash PRIVATE bbmod_host)
+    add_dependencies(test_crash test_crash_mod test_mod)
+    add_test(NAME crash_recovery COMMAND test_crash $<TARGET_FILE:test_mod> $<TARGET_FILE:test_crash_mod>)
+endif()
+
+add_library(test_xml_mod SHARED test_xml_mod.c)
+target_include_directories(test_xml_mod PRIVATE ${PROJECT_SOURCE_DIR}/sdk/include)
+set_target_properties(test_xml_mod PROPERTIES PREFIX "" OUTPUT_NAME "test_xml_mod")
+add_executable(test_xml test_xml.c)
+target_link_libraries(test_xml PRIVATE bbmod_host)
+add_dependencies(test_xml test_xml_mod)
+add_test(NAME xml_patches COMMAND test_xml $<TARGET_FILE:test_xml_mod> ${CMAKE_CURRENT_SOURCE_DIR}/data/Bloodborne.xml)
+
+add_executable(test_pad test_pad.c)
+target_link_libraries(test_pad PRIVATE bbmod_host)
+target_include_directories(test_pad PRIVATE ${PROJECT_SOURCE_DIR}/host/src)
+add_test(NAME pad_effects COMMAND test_pad)
+
+add_library(test_discovery_mod SHARED test_discovery_mod.c)
+target_include_directories(test_discovery_mod PRIVATE ${PROJECT_SOURCE_DIR}/sdk/include)
+set_target_properties(test_discovery_mod PROPERTIES PREFIX "")
+add_executable(test_discovery test_discovery.c)
+target_link_libraries(test_discovery PRIVATE bbmod_host)
+target_include_directories(test_discovery PRIVATE ${PROJECT_SOURCE_DIR}/host/src)
+add_dependencies(test_discovery test_discovery_mod)
+add_test(NAME periodic_discovery COMMAND test_discovery $<TARGET_FILE:test_discovery_mod>)

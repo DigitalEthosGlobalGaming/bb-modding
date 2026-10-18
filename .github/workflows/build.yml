@@ -1,0 +1,111 @@
+name: Build and package
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build static Zydis
+        run: |
+          git clone --branch v4.1.1 --depth 1 --recurse-submodules https://github.com/zyantific/zydis.git /tmp/zydis
+          cmake -S /tmp/zydis -B /tmp/zydis-build -DCMAKE_BUILD_TYPE=Release \
+            -DZYDIS_BUILD_SHARED_LIB=OFF -DZYDIS_BUILD_EXAMPLES=OFF -DZYDIS_BUILD_TOOLS=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_INSTALL_PREFIX=/tmp/zydis-install
+          cmake --build /tmp/zydis-build --parallel 4
+          cmake --install /tmp/zydis-build
+          cmake --install /tmp/zydis-build/zycore
+      - name: Build and test Rust
+        run: |
+          cargo build --workspace --release --locked
+          cargo test --workspace --locked
+      - name: Build and test host
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/tmp/zydis-install \
+            -DBBMOD_WITH_ZYDIS=ON -DBBMOD_RUST_MOD=$PWD/target/release/libhello_rust.so \
+            -DBBMOD_RUST_MANIFEST=$PWD/examples/hello-rust/mod.toml \
+            -DBBMOD_RUST_HOOK_MOD=$PWD/target/release/librust_hook_mod.so \
+            -DBBMOD_EXAMPLES_DIR=$PWD/target/release
+          cmake --build build --parallel 4
+          ctest --test-dir build --output-on-failure --timeout 120 --no-tests=error
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+      - name: Add CLANG64 tools to PATH
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: '"$env:MSYS2_ROOT/clang64/bin" | Out-File -FilePath $env:GITHUB_PATH -Append'
+      - name: Build static Zydis and Zycore
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Run([string]$Tool, [string[]]$Arguments) {
+            & $Tool @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "$Tool failed ($LASTEXITCODE)" }
+          }
+          Run git @('clone', '--branch', 'v4.1.1', '--depth', '1', '--recurse-submodules',
+            'https://github.com/zyantific/zydis.git', 'build/deps/zydis')
+          $prefix = "$env:GITHUB_WORKSPACE/build/deps/zydis-install".Replace('\', '/')
+          Run cmake @('-S', 'build/deps/zydis', '-B', 'build/deps/zydis-build', '-G', 'Ninja',
+            '-DCMAKE_C_COMPILER=clang', '-DCMAKE_CXX_COMPILER=clang++', '-DCMAKE_BUILD_TYPE=Release',
+            '-DZYDIS_BUILD_SHARED_LIB=OFF', '-DZYDIS_BUILD_EXAMPLES=OFF', '-DZYDIS_BUILD_TOOLS=OFF',
+            "-DCMAKE_INSTALL_PREFIX=$prefix")
+          Run cmake @('--build', 'build/deps/zydis-build', '--parallel', '4')
+          Run cmake @('--install', 'build/deps/zydis-build')
+          Run cmake @('--install', 'build/deps/zydis-build/zycore')
+      - name: Build and validate Windows
+        run: ./scripts/build-windows.ps1 -ZydisPrefix build/deps/zydis-install
+      - name: Create redistributable
+        run: ./scripts/package.ps1 -ZydisPrefix build/deps/zydis-install
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bbmod-windows-x64
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bbmod-windows-x64
+          path: dist
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/*.zip dist/*.sha256 --verify-tag --draft --generate-notes --title "bbmod $TAG"
