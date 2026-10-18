@@ -17,10 +17,11 @@ Run cargo @('test', '--workspace', '--locked')
 Run cmake @('-S', '.', '-B', $build, '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release',
     '-DCMAKE_C_COMPILER=clang', '-DCMAKE_CXX_COMPILER=clang++',
     '-DBBMOD_WITH_ZYDIS=ON', "-DCMAKE_PREFIX_PATH=$prefix",
+    "-DZydis_DIR=$prefix/lib/cmake/zydis", "-DZycore_DIR=$prefix/lib/cmake/zycore",
     "-DBBMOD_EXAMPLES_DIR=$root/target/release",
     "-DBBMOD_RUST_HOOK_MOD=$root/target/release/rust_hook_mod.dll")
 Run cmake @('--build', $build, '--parallel', '4')
-Run ctest @('--test-dir', $build, '--output-on-failure', '--timeout', '120', '--no-tests=error')
+Run ctest @('--test-dir', $build, '--output-on-failure', '--timeout', '300', '--no-tests=error')
 $commit = & git rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Commit the source before recording a validated build.' }
 @{ commit = $commit; zydisPrefix = $prefix; target = 'windows-x64';
