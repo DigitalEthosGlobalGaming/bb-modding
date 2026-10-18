@@ -1,0 +1,84 @@
+Shared hooks and UI release — 18 October 2026
+
+Implemented
+  ABI 1.4 C/Rust shared services: player observations, explicit guarded HP/stamina
+  adjustments and deterministic owned modifiers; sampled equipment; paged carried
+  inventory and exact-reference equipment/inventory correlation.
+  Host-owned native item-result and limited attack/behavior observations, queued
+  for shared subscriber delivery. Fixed verified image locations; no heap scan.
+  Shared overlay contribution slots, ownership-scoped widgets and deterministic
+  ordering. Dynamic callback registration cannot skip neighboring frame callbacks.
+  UI Examples, Inspector and Adaptive Triggers use common dashboard/settings slots.
+  Two hook test mods exercise the same services together.
+
+Offline verification performed
+  modding/verify-framework.ps1:
+    Rust workspace builds; 18 unit tests pass (9 SDK, 7 Inspector, 2 UI example).
+    Three existing documentation examples remain ignored, not counted as passes.
+    Native CTest: 21/21 pass; 286.80 seconds total.
+    Includes host lifecycle, memory regions, cooperative/OS hook quiescence,
+    networking, Inspector mailbox, shared input, patches, controller ownership,
+    discovery, equipment, native item/attack detours, UI slots, gameplay modifiers,
+    frame-resource mutation, inventory resolution and inventory paging/cache.
+  Optimized native check: 6/6 pass with -O2 and assertions enabled, including both
+    actual SysV detour/trampoline fixtures, inventory service, modifiers and UI.
+  Actual two-hook-DLL harness: matching typed observations, modifier composition,
+    separate widget actions, isolated unload and 20 reload cycles pass.
+  Actual UI-example DLL harness: counters, scoped contributions and 20 hide/show/
+    reload cycles pass. Two state-format unit tests pass.
+  Adaptive package tests: four logic tests, controller ownership/coalescing,
+    SDL packet formatting and actual DLL UI/reset/reload/fault/unload checks pass.
+  Existing installed input-monitor/input-counter DLLs pass the new host harness.
+  Deployment rollback: four temporary-directory tests pass, covering original
+    restoration, new-file removal, changed-file refusal and path containment.
+  Read-only ELF checker: extracts 28 fingerprint records and validates the
+    implemented equipment/inventory/action signatures, native field labels and
+    System-finalizer call target. It records the ELF hash and versioned RVAs.
+  Final runtime builds; imported DLL set unchanged (41 imports). Symbol inspection
+    confirms inventory, shared UI and native attack code are linked into runtime.
+  Inspector CLI syntax/help checks pass for shared-player, shared-equipment,
+    shared-inventory and shared-equipped. No live CLI commands were sent.
+
+Reproduce
+  ./modding/verify-framework.ps1
+  ./modding/mods/hooks-testing-mod/build.ps1 -Test
+  ./modding/bloodborne_pc/third_party/bbmod/examples/ui-examples/build.ps1 -Test
+  ./modding/mods/adaptive-triggers/build.ps1 -Test -NoDeploy
+  C:/Python311/python.exe modding/tests/test_deploy_hooks_release.py
+  C:/Python311/python.exe modding/discoveries/check-equipment-ui-profile.py
+  ./modding/build-port.ps1
+
+Boundaries
+  Bloodborne was not launched and no computer-use automation was used for this
+  release. Gameplay and visual acceptance remain for the user. Read TEST-WHEN-BACK.
+  The new UI is the host overlay. Native System-menu creation/modification and
+  interception are researched, not implemented. See equipment-ui-research.md.
+  Equipment hand/armor labels remain unconfirmed. Exact matches can resolve item
+  IDs without guessing labels. Inventory is carried items, not storage.
+  Native attack records identify behavior/source, not a weapon, hit or damage.
+  Coverage is conditional and multiple records can represent one action.
+  Sampled HP changes are not native damage events. Scaling claims affect explicit
+  SDK adjustments only, not natural damage or regeneration. Test defaults observe.
+  Event queues are bounded; contention/overflow can drop records with diagnostics.
+  Each native observer retains one bounded trampoline allocation until process
+  exit for cached calls; it cannot reinstall repeatedly in the same process.
+
+Installation and rollback details are recorded after deployment below.
+
+Installed 2026-10-18
+  Nine deployed files were verified against their expected SHA-256 hashes:
+  runtime, five mod DLLs and three new mod manifests.
+  All 22 tracked existing settings, manifests and save files are unchanged.
+  Backup: C:\games\bloodborne-pc\backups\pre-hooks-ui-20261018-151650-910707
+  The backup manifest records the prior files and deployed hashes.
+
+Combined UI verification
+  ./modding/test-shared-ui-mods.ps1 passed with the actual Inspector, Adaptive
+  Triggers and UI Examples DLLs: six sections across two shared windows.
+  Five reloads each of Inspector and Adaptive Triggers retained six sections.
+  Unloading UI Examples left four sections; reloading restored six.
+  This used a fake UI/pad backend, not the game or controller hardware.
+
+Rollback (close the game and launcher first)
+  C:/Python311/python.exe modding/deploy-hooks-release.py --rollback C:/games/bloodborne-pc/backups/pre-hooks-ui-20261018-151650-910707
+  Rollback checks hashes and refuses to overwrite files changed since deployment.

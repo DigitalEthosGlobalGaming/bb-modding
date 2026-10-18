@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["sdk/rust/bbmod-sys", "sdk/rust/bbmod", "examples/hello-rust", "examples/live-patches", "examples/devtools", "examples/input-monitor", "examples/input-counter", "tests/rust-hook-mod"]
+members = ["sdk/rust/bbmod-sys", "sdk/rust/bbmod", "examples/hello-rust", "examples/live-patches", "examples/devtools", "examples/input-monitor", "examples/input-counter", "examples/ui-examples", "examples/native-ui", "tests/rust-hook-mod"]
 
 [workspace.package]
 version = "0.1.0"

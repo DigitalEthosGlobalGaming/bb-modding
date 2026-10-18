@@ -24,7 +24,7 @@ static int valid_name(const char *s) {
               (*s >= '0' && *s <= '9') || *s == '_' || *s == '.' || *s == '-')) return 0;
     return 1;
 }
-static bbm_status contribute(bbm_handle m, const char *slot, const char *key,
+static bbm_status contribute_locked(bbm_handle m, const char *slot, const char *key,
                             int32_t order, bbm_panel_cb draw, void *user, bbm_id *out) {
     if (!m || !m->entry || !draw || !out || !valid_name(slot) || !valid_name(key)) return BBM_ERR_ARG;
     if (m->faulted || m->bypassed) return BBM_ERR_STATE;
@@ -49,6 +49,14 @@ static bbm_status contribute(bbm_handle m, const char *slot, const char *key,
     bbm_id id=mh_res_add(m,MH_RES_UI_CONTRIBUTION,p);
     if (!id) { free(p); return BBM_ERR_NOMEM; }
     *out=id; return BBM_OK;
+}
+static bbm_status contribute(bbm_handle m, const char *slot, const char *key,
+                            int32_t order, bbm_panel_cb draw, void *user, bbm_id *out) {
+    if (!m || !m->host) return BBM_ERR_ARG;
+    plat_mutex_lock(m->host->run_lock);
+    bbm_status result=contribute_locked(m,slot,key,order,draw,user,out);
+    plat_mutex_unlock(m->host->run_lock);
+    return result;
 }
 static int compare(const void *aa,const void *bb) {
     const item *a=aa,*b=bb;
@@ -87,6 +95,7 @@ void mh_ui_slots_draw(modhost *h) {
             h->current_panel_mod=x->owner;
             mh_call call={.kind=MH_CALL_VOID1,.f=(void(*)(void))x->value.draw,.a=x->value.user};
             mh_call_mod(x->owner,&call);
+            mh_ui_tables_cleanup(x->owner);
             h->current_panel_mod=NULL;
             ui->pop_scope(ui->user);
         }

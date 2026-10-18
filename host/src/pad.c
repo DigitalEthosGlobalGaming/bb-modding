@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "internal.h"
+#include <math.h>
 static const uint8_t off[11] = {5};
 static int captured(modhost *h) {
     return h->cfg.pad.captured && h->cfg.pad.captured(h->cfg.pad.user);
@@ -59,8 +60,33 @@ static bbm_status lightbar(bbm_handle m, uint8_t r, uint8_t g, uint8_t b) {
     plat_mutex_unlock(h->run_lock);
     return rc;
 }
+static bbm_status haptics(bbm_handle m, const float *pcm, uint32_t frames) {
+    if (!m || frames > 12000 || (frames && !pcm)) return BBM_ERR_ARG;
+    for (uint32_t i=0; i<frames*2; ++i)
+        if (!isfinite(pcm[i]) || fabsf(pcm[i]) > 0.5f) return BBM_ERR_ARG;
+    modhost *h=m->host;
+    plat_mutex_lock(h->run_lock);
+    bbm_status rc=BBM_OK;
+    bbm_pad_info p;
+    if (h->haptics_owner && h->haptics_owner != m) rc=BBM_ERR_CONFLICT;
+    else if (!frames) {
+        if (h->haptics_owner && h->cfg.pad.haptics) h->cfg.pad.haptics(h->cfg.pad.user,NULL,0);
+        h->haptics_owner=NULL;
+    } else if (m->bypassed || m->faulted || captured(h)) rc=BBM_ERR_STATE;
+    else if (!h->cfg.pad.haptics || info_locked(h,&p) || p.kind!=BBM_PAD_DUALSENSE || p.connection!=BBM_PAD_USB)
+        rc=BBM_ERR_UNSUPPORTED;
+    else if (h->cfg.pad.haptics(h->cfg.pad.user,pcm,frames)) rc=BBM_ERR_UNSUPPORTED;
+    else h->haptics_owner=m;
+    plat_mutex_unlock(h->run_lock);
+    return rc;
+}
+static void stop_haptics(modhost *h) {
+    if (h->haptics_owner && h->cfg.pad.haptics) h->cfg.pad.haptics(h->cfg.pad.user,NULL,0);
+    h->haptics_owner=NULL;
+}
 void mh_pad_release_owner(struct bbm_mod *m) {
     modhost *h = m->host;
+    if (h->haptics_owner == m) stop_haptics(h);
     for (int i = 0; i < 2; ++i) if (h->trigger_owner[i] == m) {
         h->trigger_owner[i] = NULL; h->pad_urgent = 1;
     }
@@ -72,12 +98,15 @@ void mh_pad_release_owner(struct bbm_mod *m) {
 void mh_pad_tick(modhost *h, uint64_t now) {
     bbm_pad_info p;
     if (info_locked(h, &p) || !p.device_id) {
+        stop_haptics(h);
         h->pad_valid = h->led_valid = 0; h->pad_device = 0; return;
     }
     if (h->pad_device != p.device_id) {
+        if (h->pad_device) stop_haptics(h);
         h->pad_device = p.device_id; h->pad_valid = h->led_valid = 0; h->pad_next_ms = 0;
     }
     int cap = captured(h);
+    if (cap) stop_haptics(h);
     if (cap && !h->pad_capture) h->pad_urgent = 1;
     h->pad_capture = cap;
     uint8_t desired[2][11], led[3] = {0};
@@ -104,6 +133,7 @@ void mh_pad_tick(modhost *h, uint64_t now) {
     if (sent) { h->pad_failed = failed; h->pad_next_ms = now + (failed ? 1000 : 34); }
 }
 void mh_pad_fill(bbm_host *api) {
+    api->pad_haptics = haptics;
     api->pad_info = info; api->pad_trigger = trigger;
     api->pad_release = release; api->pad_lightbar = lightbar;
 }

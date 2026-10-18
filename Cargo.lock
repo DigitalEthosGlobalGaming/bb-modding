@@ -49,7 +49,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "native-ui-example"
+version = "0.1.0"
+dependencies = [
+ "bbmod",
+]
+
+[[package]]
 name = "rust-hook-mod"
+version = "0.1.0"
+dependencies = [
+ "bbmod",
+]
+
+[[package]]
+name = "ui-examples"
 version = "0.1.0"
 dependencies = [
  "bbmod",

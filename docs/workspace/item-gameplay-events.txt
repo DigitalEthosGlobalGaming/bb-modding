@@ -1,0 +1,134 @@
+ITEM ACTIONS AND COMBAT EVENT EVIDENCE — 18 October 2026
+
+Status
+The ABI 1.5 item award service is implemented. onAttack remains the existing
+read-only AttackObserved behavior observation. A trustworthy onHit event is not
+implemented: the damage candidates below do not yet establish attacker, victim,
+weapon identity, accepted hit versus reaction, or a stable mutable damage value.
+No hit is synthesized from HP loss, inventory changes or attack notifications.
+No game was launched or modified live during this work.
+
+Sources and licensing
+BB Tools, MIT, revision15fdfda3af45fbb0315ac626f36bbe8f083258ea:
+https://github.com/JamesCicada/bb-tools (local setup-tools/references/bb-tools)
+Relevant source: src/BBTools/Memory/GameActions.cs and GameThreadQueue.cs;
+docs/memory-research.md. Addresses independently compared with private local ELF.
+BBhost, GPL-3.0, revision566184a74f071166299bb656c4af479e5bbe2771:
+https://github.com/droogie/bbhost
+Relevant source: src/engine/params.cpp. Layout facts informed an independent
+bounded reader; no reference implementation was copied into the SDK.
+
+All addresses below are RVAs from the relocated guest image. Inspector's PS4
+address is RVA+0x400000. The private ELF stays outside distributed artifacts.
+Run python modding/discoveries/check-item-actions-profile.py to verify all ten
+exact fingerprints used by the host and regenerate item-actions-profile.json.
+That check passed against the current local ELF. It records its SHA-256.
+
+Native item service
+The getter at18FD960 reads actor+3C0 and returns. PlayerIns resource sync's
+virtual call sequence at18F7891 reads the actor vtable and calls slot1C8;
+accepted return18F789A. The host detours the getter once, preserves its original
+return, and consumes work ONLY from this return site. Other getter users and
+recursive entry cannot consume requests. A CAS execution gate serializes native
+consumers; it never waits for the host run_lock or calls any mod callback.
+
+Each request identifies owning mod instance, local actor, character, generation,
+encoded catalog ID and quantity. Host enqueue verifies current living local
+player, safe-mode/network restrictions and generation. Native execution checks
+WorldChrMan->mainplayer, actor->character, GameDataMan->playerrecord and living
+resource component again. A changed sampled generation, network session, unload,
+fault or five-second expiry cancels pending work. A request already claimed by
+the native callback cannot be cancelled or reversed. It contains no DLL pointers.
+There are32 total request slots and at most8 per mod, including unconsumed results.
+Terminal status polling consumes a result; no new slot replaces a running request.
+
+The order on this same guest callback is:
+1.1A86FF0(out_handle, ItemMan, pointer_to_encoded_catalog_id)
+2.17D89F0(MapItemMan, batch)
+3.1A8BC00(pointer_to_temporary_handle)
+MapItemMan singleton553D6E0; ItemMan553E990. Batch is five32-bit words:
+count1, constructed_handle, encoded_catalog_id, quantity, sentinelFFFFFFFF.
+A catalog ID is not an inventory handle. The award retains ownership for its own
+queued processing; the temporary reference must be released after award.
+SUBMITTED reports this native sequence was executed, not that asynchronous
+inventory insertion succeeded or that a save was written. Check inventory later.
+Successful item grants can persist through the game's ordinary save mechanism.
+
+Encoding constraints
+High nibble0=weapon,1=protector,2=accessory,4=goods. Base ID must be positive and
+less than0FFFFFFF; goods must be below007FFFFF because the constructor explicitly
+substitutes an invalid sentinel at/above that bound. Equipment quantity is1;
+goods quantity1..99. The same <007FFFFF constructor restriction also applies to
+accessories and is enforced by the raw API. Sentinel handles (low24 bits all
+ones) are rejected without calling award. Weapon50m IDs
+use instance-backed handles and are not subject to the goods handle bit limit.
+Their presence in active PARAM data is nevertheless required.
+
+Active PARAM guard
+Goods construction only encodes the ID and therefore cannot validate existence.
+Before construction the host reads SoloParamRepository at5540340, first cap of
+each bounded slot, cap+70->holder+70->file. Type atfile+C must exactly match the
+requested EQUIP_PARAM_*_ST. Current supported tables use format4 and flag bit1,
+16-bit row count at+A,24-byte records at+40. Binary lookup of sorted IDs checks
+the row data offset/readability and rechecks repository/cap/holder/file identity.
+Absent, malformed or unsupported data produces FAILED before calling constructor.
+The63-slot ceiling and48-byte slot stride come from the reference repository
+layout. The native goods accessor1F1E3D0 independently confirms repository5540340,
+active first cap atrepository+150, both+70 dereferences, row count+A, format+2D
+and flag+2E. No address-space scan or native lookup invocation is involved.
+A registry declaration alone cannot make an absent custom row grantable.
+
+Lifetime and validation
+Bridge is host-owned with process-lifetime static storage. Shutdown disables
+capture, cancels pending requests, restores/bypasses the getter and retains one
+bounded trampoline/gate allocation until process exit for cached detour calls.
+It cannot reinstall in the same process. It is enabled with native observation;
+missing signatures, unsupported host, safe mode or disabled observation refuse
+requests. No startup scanning occurs; verification is ten short fixed reads.
+Test_item_actions executes the real SysV getter detour, accepted virtual-call
+return and original trampoline against a synthetic image. Only constructor,
+award and release bodies are test stubs. Tests cover missing active PARAM/row,
+malformed format, return preservation, argument/batch order, failure, per-mod
+ownership, queue budget, cancellation, network suppression and shutdown.
+Debug and assertion-enabled-O2 harnesses passed before the final format guard;
+root runs the final guard regression. Real-game inventory insertion is untested.
+
+onAttack semantics
+AttackObserved exposes behavior_id and source (verified return sites1A26658 and
+1A29858 targeting1FE8FB0). It does not expose a weapon item ID, damage or a hit.
+The first path has a conditional engine argument/flag in addition to successful
+action return; source2 follows a stamina update. One action can produce multiple
+records or none on unobserved paths. Do not infer hit or target from this event.
+These remain observation points rather than cancellation/mutation hooks.
+
+onHit / native damage investigation
+UTF-16 labels found in local ELF:
+49BC5F0 damage;49BC5FE damage_rate;49BC616 damage_type;
+49BC62E damage_dir;49BC704 damage_level;49B9DC8 attacker.
+These lead to multiple PlayLog producer families, not one universal hit function.
+Independent direct-call candidate search followed by disassembly found:
+-1FE97D0, called at1A35E67: serializes three scalar float observations including
+ damage and damage_rate; insufficient evidence for attacker/weapon semantics.
+-1FE9B80, calls at130EF92 and1A2A6D7; typed damage fields and attacker label occur.
+-1FEA250, call at1A2A730; incoming RDI,RSI,RDX,ECX retained; log kind9, version3.
+-1FEAB60, call at1A2F1B8, return1A2F1BD; log kind14, version1. Incoming RDI actor,
+ RSI points to a larger record, EDX is retained as a32-bit value. The caller
+ requires record+1B8>0 before logging; record fields are copied into the actor's
+ reaction component immediately before the call. Producer serializes
+ damage_level/damage_dir and attacker metadata. This could be a damage-reaction
+ record, and is not proven to be every accepted hit. No onHit detour installed.
+Each producer performs a logging-enabled check after entry. Existing research
+never enables telemetry or upload paths; a future observer should remain before
+that gate only after its action semantics and pointer lifetimes are established.
+
+Next validation for an honest onHit API
+Trace1A2F1B8 record's producer and the accepted-hit collision path; identify both
+actor identities, team/self/owner rules, damage result and attack/weapon instance
+association. Establish miss, block, invulnerability, bullets, environmental
+hazards, poison/DOT, multiple-target and repeated-hit behavior. Identify a native
+owner/generation token and a thread-safe observation point, copy only validated
+scalar fields into bounded host queues, and test zero/invalid/null arguments.
+A mutable damage hook additionally requires the exact pre-commit stage and a
+single host-owned composition policy; post-reaction logging is too late.
+Controlled in-game tests must confirm coverage and duplicates before claiming
+onHit support. A synthetic ABI test alone cannot establish these semantics.

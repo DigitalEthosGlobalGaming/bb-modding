@@ -7,6 +7,7 @@
 #include <ctype.h>
 
 #include "internal.h"
+#include "native_menu.h"
 
 static int vfs_find(modhost *h, const char *key) {
     for (size_t i = 0; i < h->nvfs; i++)
@@ -164,6 +165,9 @@ void mh_vfs_rebuild_assets(modhost *h) {
 
 /* Any thread (the game's file I/O). */
 int modhost_vfs_resolve(modhost *h, const char *game_path, char *out, size_t cap) {
+    /* Framework-composed native movie: one owner even with several UI mods.
+     * Resolve before the ordinary layers to keep code and widget layout paired. */
+    if(mh_menu_bridge_resolve(h,game_path,out,cap))return 1;
     if (!__atomic_load_n(&h->vfs_any, __ATOMIC_ACQUIRE)) return 0; /* no overrides: the common case */
     char key[MH_PATH];
     mh_strlcpy(key, game_path, sizeof key);

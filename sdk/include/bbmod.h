@@ -24,7 +24,7 @@ extern "C" {
 #endif
 
 #define BBM_ABI_MAJOR 1
-#define BBM_ABI_MINOR 4
+#define BBM_ABI_MINOR 8
 
 #if defined(_WIN32)
 #define BBM_EXPORT __declspec(dllexport)
@@ -76,6 +76,11 @@ enum {
     BBM_EV_RESUME = 1u << 8,
     BBM_EV_MODSET_MISMATCH = 1u << 9, /* a = peer id, data = UTF-8 diff text */
     BBM_EV_PLAYER_CHANGED = 1u << 11, /* data: bbm_player_change, sampled, NOT damage */
+    BBM_EV_EQUIPMENT_CHANGED = 1u << 15, /* data: bbm_equipment_change; sampled diagnostic */
+    BBM_EV_INVENTORY_CHANGED = 1u << 17, /* data: bbm_inventory_change; sampled */
+    BBM_EV_CHARACTERS_CHANGED = 1u << 19, /* sampled registry revision; data: bbm_character_summary */
+    BBM_EV_ATTACK_OBSERVED = 1u << 18, /* data: bbm_attack_observed; behavior observation */
+    BBM_EV_ITEM_USE_OBSERVED = 1u << 16, /* data: bbm_item_use; native action result */
     BBM_EV_PAD_CHANGED = 1u << 10 /* read-only: a = current buttons, b = previous buttons */
 };
 
@@ -98,6 +103,101 @@ typedef struct bbm_player_snapshot {
 typedef struct bbm_player_change {
     bbm_player_snapshot previous, current;
 } bbm_player_change;
+
+/* Raw diagnostic equipment layout. No named hand/armor mapping or inventory API.
+ * References are opaque, not catalog IDs; saved IDs may lag runtime changes. */
+typedef struct bbm_equipment_snapshot {
+    uint32_t size, flags; /* bit 0: available */
+    uint64_t generation;
+    uintptr_t actor, character;
+    uint32_t mode, selections[6], runtime_references[16], saved_item_ids[16];
+    uint32_t selected_even, selected_odd; /* array indices or UINT32_MAX */
+    uint32_t reserved;
+} bbm_equipment_snapshot;
+typedef struct bbm_equipment_change {
+    bbm_equipment_snapshot previous, current;
+} bbm_equipment_change;
+/* source 1: successful behavior caller; source 2: stamina-update caller.
+ * Behavior identifiers are not weapon IDs; both sites may report one action. */
+typedef struct bbm_attack_observed {
+    uint32_t size, source;
+    uint64_t generation;
+    uintptr_t actor;
+    int32_t behavior_id;
+    uint32_t reserved;
+} bbm_attack_observed;
+
+typedef struct bbm_item_use {
+    uint32_t size, success;
+    uint64_t generation;
+    uintptr_t actor;
+    int32_t item_id;
+    uint32_t reserved;
+} bbm_item_use;
+
+/* Queued native item award. SUBMITTED means the native award batch was called;
+ * it does not guarantee later inventory insertion or persistence. Terminal
+ * status polling consumes the request. Pending requests cancel on unload. */
+enum { BBM_ITEM_PENDING=1, BBM_ITEM_RUNNING=2, BBM_ITEM_SUBMITTED=3,
+       BBM_ITEM_CANCELLED=4, BBM_ITEM_FAILED=5 };
+typedef struct bbm_item_give_result {
+    uint32_t size, state;
+    uint64_t request_id, generation;
+    uint32_t encoded_item_id, quantity;
+} bbm_item_give_result;
+
+/* Read-only carried inventory. Pages share a bounded host cache refreshed no
+ * more often than every 250 ms. revision=0 selects its latest snapshot; pass the
+ * returned revision for every following page, or STATE rejects mixed versions.
+ * flags bit0 means available/resolved respectively; IDs are category encoded.
+ * Metadata words remain deliberately opaque. No storage or mutation API. */
+#define BBM_INVENTORY_PAGE_SIZE 64
+#define BBM_INVENTORY_MAX_ITEMS 4096
+#define BBM_INVENTORY_AVAILABLE 1u
+#define BBM_INVENTORY_ID_RESOLVED 1u
+/* ABI 1.6: shared, read-only loaded-character cache, at most every 250 ms.
+ * A missing character is not proof of death. Flags gate optional fields.
+ * Tokens are host sample lifetimes, not native handles or save identities. */
+enum { BBM_CHARACTER_AVAILABLE=1, BBM_CHARACTER_NPC_PARAM=2,
+       BBM_CHARACTER_AI_MODULE=4, BBM_CHARACTER_SCRIPT_VALUE=8, BBM_CHARACTER_HEALTH=16 };
+#define BBM_CHARACTER_PAGE_SIZE 32
+#define BBM_CHARACTER_MAX 512
+typedef struct bbm_character {
+    uint32_t size, flags;
+    uint64_t token;
+    uint32_t handle, kind; /* 0 unknown; 1 local player; 2 player class; 3 NpcIns (not necessarily hostile) */
+    int32_t health, max_health, team_type, npc_param, name_id, script_value;
+    int32_t backread_state, update_interval; /* raw diagnostic scheduling values */
+} bbm_character;
+typedef struct bbm_character_summary {
+    uint32_t size, flags; /* flags=1 means a complete valid sample */
+    uint64_t revision, epoch;
+    uint32_t count, reserved;
+} bbm_character_summary;
+typedef struct bbm_character_page {
+    bbm_character_summary snapshot;
+    uint32_t offset, count;
+    bbm_character entries[BBM_CHARACTER_PAGE_SIZE];
+} bbm_character_page;
+
+typedef struct bbm_inventory_entry {
+    uint32_t slot, reference, encoded_item_id, quantity;
+    uint32_t metadata_04, metadata_0c, flags, reserved;
+} bbm_inventory_entry;
+typedef struct bbm_inventory_summary {
+    uint32_t size, flags;
+    uint64_t generation, revision;
+    uintptr_t actor, character;
+    uint32_t slot_count, item_count;
+} bbm_inventory_summary;
+typedef struct bbm_inventory_page {
+    bbm_inventory_summary snapshot;
+    uint32_t offset, count;
+    bbm_inventory_entry entries[BBM_INVENTORY_PAGE_SIZE];
+} bbm_inventory_page;
+typedef struct bbm_inventory_change {
+    bbm_inventory_summary previous, current;
+} bbm_inventory_change;
 
 /* ---- Multiplayer ------------------------------------------------------ */
 
@@ -164,6 +264,49 @@ typedef struct bbm_pad_info {
     uint16_t reserved;
     uint64_t device_id; /* changes on reconnect; zero means absent */
 } bbm_pad_info;
+
+/* ABI 1.8: declarative native menus. All strings are copied. No engine callback
+ * points into a mod DLL. Keys are local to the owner; custom paths are
+ * "<mod-id>/<screen-key>". Supported locations are capability gated. */
+#define BBM_EV_NATIVE_MENU (1u << 20)
+#define BBM_MENU_SCREEN 1u
+#define BBM_MENU_ACTION 2u
+#define BBM_MENU_LINK 3u
+#define BBM_MENU_TOGGLE 4u
+#define BBM_MENU_ENABLED 1u
+#define BBM_MENU_CAP_REGISTRY 1u
+#define BBM_MENU_CAP_LISTS 2u
+#define BBM_MENU_CAP_SYSTEM 4u
+#define BBM_MENU_CAP_INGAME 8u
+#define BBM_MENU_CAP_OBSERVE 16u
+#define BBM_MENU_CAP_SELECTION 32u
+#define BBM_MENU_OPENED 1u
+#define BBM_MENU_CLOSED 2u
+#define BBM_MENU_ACTIVATED 3u
+#define BBM_MENU_VALUE_CHANGED 4u
+#define BBM_MENU_CREATED 5u
+#define BBM_MENU_REGISTRY_CHANGED 6u
+#define BBM_MENU_SELECTION_CHANGED 7u
+typedef struct bbm_menu_node {
+    uint32_t size, kind, flags;
+    int32_t order, value;
+    char key[64], parent[192], label[128], help[256], target[192];
+} bbm_menu_node;
+typedef struct bbm_menu_state {
+    uint32_t size, capabilities;
+    uint64_t revision, generation;
+    char screen[192]; /* empty = no observed active menu */
+} bbm_menu_state;
+typedef struct bbm_menu_event {
+    uint32_t size, kind;
+    uint64_t generation, revision, node;
+    int32_t value;
+    uint32_t reserved;
+    uint64_t control; /* opaque native list token; never a game pointer */
+    int32_t previous_value;
+    uint32_t flags;
+    char owner[128], key[64], screen[192];
+} bbm_menu_event;
 
 typedef struct bbm_host {
     uint32_t size; /* sizeof(bbm_host) as built by the host */
@@ -292,7 +435,33 @@ typedef struct bbm_host {
                                  int32_t priority, bbm_id *out);
     bbm_status (*ui_contribute)(bbm_handle self, const char *slot, const char *key,
                                int32_t order, bbm_panel_cb draw, void *user, bbm_id *out);
+    bbm_status (*equipment_snapshot)(bbm_handle self, bbm_equipment_snapshot *out);
+    bbm_status (*inventory_page)(bbm_handle self, uint64_t revision, uint32_t offset,
+                                uint32_t limit, bbm_inventory_page *out);
 
+    /* ABI 1.5: native player-update item queue; see bbm_item_give_result. */
+    bbm_status (*item_give)(bbm_handle self, uint32_t encoded_item_id, uint32_t quantity,
+                            uint64_t generation, uint64_t *request_id);
+    bbm_status (*item_give_status)(bbm_handle self, uint64_t request_id, bbm_item_give_result *out);
+    /* Optional size-gated extension: stereo actuator PCM, 48 kHz, <= 12000
+     * frames, finite samples in [-0.5,0.5]. Replaces the previous finite clip.
+     * frames=0 releases ownership and stops playback. No pointer retained. */
+    bbm_status (*pad_haptics)(bbm_handle self, const float *stereo, uint32_t frames);
+    bbm_status (*characters_page)(bbm_handle self, uint64_t revision, uint32_t offset, uint32_t limit, bbm_character_page *out);
+    /* ABI 1.7: one scoped sortable table per mod draw. Begin: 1 visible,
+     * 0 clipped, -1 unsupported/invalid. Headers are borrowed for this call.
+     * sort_column/direction receive the current single-column sort (0/1). */
+    int32_t (*ui_table_begin)(bbm_handle,const char*,const char*const*,uint32_t,float,int32_t*,int32_t*);
+    void (*ui_table_next_row)(bbm_handle);
+    void (*ui_table_next_column)(bbm_handle);
+    void (*ui_table_end)(bbm_handle);
+    /* Registration works offline; capabilities distinguish registry from a
+     * connected native adapter. Updates take effect on the next menu build.
+     * An open native list is immutable. Activation is validated again against
+     * resource ID/revision at the sync point; stale actions are discarded. */
+    bbm_status (*menu_register)(bbm_handle, const bbm_menu_node*, bbm_id*);
+    bbm_status (*menu_update)(bbm_handle, bbm_id, const bbm_menu_node*);
+    bbm_status (*menu_state)(bbm_handle, bbm_menu_state*);
 } bbm_host;
 
 /* ---- Mod function table (filled by the mod in bbmod_entry) ------------- */

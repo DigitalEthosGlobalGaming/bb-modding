@@ -1,0 +1,161 @@
+Native in-game menu investigation — 18 October 2026
+
+Requested result
+----------------
+Inventory | Status | System | Mods
+
+Mods contains installed mods and their settings. It is part of Bloodborne's
+normal in-game UI, using the game's navigation, selection, back action and
+screen transitions. The framework must provide shared native UI services to
+mods; the existing F1 ImGui slots do not satisfy this request.
+
+Status: offline investigation only. No native menu has been added, no game
+process was modified, and no modified assets or binaries were deployed.
+
+Reproduce
+---------
+From C:\games\bloodborne-pc in PowerShell:
+
+  python modding/discoveries/check-ingame-menu-profile.py
+
+The script reads the private prepared ELF, ingametop.gfx and the enggb menu
+message archive. It checks ten direct CALL destinations, three native names,
+the movie's bounded tag structure and named cell layout, and reads FMG captions.
+It writes hashes, fingerprints and layout evidence to:
+
+  modding/discoveries/ingame-menu-profile.json
+
+With the installed MSYS2 llvm-objdump, it also writes selected private native
+disassembly to ingame-menu-verified-private-disassembly.txt beside the script.
+These local reports contain game-derived information; they are research inputs,
+not distribution assets. The script does not alter any game input.
+
+Evidence directly checked against this installation
+-------------------------------------------------
+All addresses below are RVAs. Add 0x400000 for preferred guest / Inspector
+addresses. The unrelocated ELF's pointer tables are not live function pointers;
+zero entries there must not be interpreted as empty runtime vtables.
+
+1. The in-game movie is /dvdroot_ps4/menu/ingametop.gfx. It has a root placement
+   named Top, sprite 74 in this file. Its named selection cells are:
+
+   Item_0_0 .. Item_0_2    three top menu cells, character 45
+   Item_1_0 .. Item_1_3    four cells
+   Item_2_0 .. Item_2_3    four cells
+   Item_3_0 .. Item_3_5    six cells
+
+   There is no Item_0_3. Character 45 includes the stock Cursor placement.
+   A native fourth command therefore also needs a corresponding movie cell.
+   The existing movie has seventeen visible cell placements in total.
+
+2. FMG group 200 contains these captions in enggb/menu.msgbnd.dcx:
+
+   101000 Inventory
+   101006 Status
+   101001 System
+
+   Group 201 has their matching selection help. This establishes the order
+   from the actual captions, rather than guessing from unrelated menu names.
+
+3. Native builder RVA 0x1BDE180 names its result IngameTop (UTF-16 name at
+   0x49991B0). Its first command-row calls to 0x1B4E2A0 are:
+
+   call site    caption ID    opener address
+   0x1BDE269    101000        0x1BB8040 (Inventory)
+   0x1BDE3B8    101006        0x1BB71C0 (Status; references PlayerStatus)
+   0x1BDE507    101001        0x1BDB9E0 (calls System builder 0x1BB3AD0)
+
+   The caption lookup uses groups 200 and 201. Native row functors are built
+   through 0x1B8FBE0 before row append. Their native ownership must be preserved;
+   copying a row's bytes is not a safe way to insert or rearrange commands.
+
+4. The branch at 0x1BDE5D2 calls predicate 0x176DE30. When false, the first
+   blank command is appended at CALL 0x1BDE918 -> 0x1BE29E0. Both branches then
+   append two more blanks at 0x1BDE927 and 0x1BDE92F. When true, a command
+   captioned Debug (native string 0x49CE5A2) is appended at 0x1BDE844 instead
+   of the first blank, with opener 0x1BE29C0. The predicate's full semantics
+   have not been established. Do not treat that branch as free space.
+
+   The blank helper itself calls the native row appender, then clears flag
+   bit 0x02 and sets bit 0x08 on its final row. It is an actual placeholder
+   row, not a vector pop. A fourth command must receive normal command flags.
+
+5. The IngameTop finalizer CALL is 0x1BDF122 -> 0x1BEA630. System uses that
+   same finalizer at a different CALL, 0x1BB4978. Hooking every finalizer call
+   would affect other screens. Existing System-only research does not insert
+   a sibling beside Inventory/Status/System.
+
+6. Grid-related code at 0x1BDFB10 divides indices by six; the path handling
+   indices 18..23 and other branches map lower rows to native item slots.
+   Code at 0x1BE0250 also distinguishes those rows. Together with the three
+   commands and three placeholders this supports a six-column logical grid.
+   It is not safe to simply append a command to the end of the entire builder
+   or insert a new vector element at index three: later item indices could
+   shift. Direct cursor writes also bypass normal selection callbacks.
+
+Implementation route
+--------------------
+The smallest initial experiment is a host-owned adapter on the normal-path
+blank CALL at 0x1BDE918. It would append Mods using the game's normal command
+row constructor in place of that one placeholder. It should preserve total
+row count, existing three commands, subsequent blanks and lower item indices.
+The conditional Debug path must stay stock until its semantics are understood;
+the experiment can explicitly report unavailable there. Do not take over the
+generic blank helper or generic finalizer across all native screens.
+
+Generate a framework file override for ingametop.gfx with a fourth top-row
+placement Item_0_3, a unique depth and a translated stock selection cell.
+Use the existing spacing as a starting point; verify real label placement,
+cursor bounds, clipping and localization in-game. A static cell clone alone
+does not establish that the native provider will bind or draw it correctly.
+The framework should compose this asset once; individual mods must not each
+override the same movie or claim the same blank slot.
+
+The Mods command then needs a native screen opener. Reusing the game's command
+list machinery is a concrete candidate for a mod list, followed by native
+settings sections. Existing option-section research identifies native slider,
+choice and list controls plus optionsetting.gfx sprites, but their callback,
+functor and lifetime contracts still need validation in this Windows host.
+Do not wire the new command to the F1 panel as a substitute for that screen.
+
+Shared framework contract
+-------------------------
+One framework-owned Mods entry opens the mod list. Mods register copied labels
+and typed settings under (mod_id, setting_id), rather than patching top-menu
+code independently. Stable order is explicit priority, mod ID, then setting ID.
+The host owns all engine-visible strings and thunks. No engine widget retains
+a raw callback into an unloadable DLL. Engine events are marshalled at a
+validated menu-thread point, with generation checks before dispatch or commit.
+An open native screen must survive or close cleanly when a mod unloads/reloads.
+Any new C ABI functions must be appended and table-size gated in the Rust SDK.
+Names in this paragraph describe the intended contract, not implemented APIs.
+
+Required validation before deployment
+-------------------------------------
+* Validate row functor construction/copy/destruction and the opener's exact
+  SysV ABI in a separate native harness; preserve registers and return values.
+* Verify original-byte fingerprints and reject unsupported images/overlaps.
+* Validate the fourth cell with controller left/right/up/down, confirm and back;
+  verify all quick-item rows still select and activate their original slots.
+* Verify native mod list -> settings -> back, screen transitions, input focus,
+  multiple installed mods and supported languages/UI scale.
+* Test unload/reload while the screen is open and during setting activation;
+  test cancellation, stale owner generations, world changes and shutdown.
+* Build separately, then retain a rollback copy for any deployment. Preserve
+  original extracted assets, packages, settings and saves throughout.
+
+What was actually run
+---------------------
+The offline checker passed on this installation: ten native CALL targets,
+stock movie structure/cells and the actual English captions/help. Selected
+native code was inspected with llvm-objdump. No native constructor or opener
+was invoked, no controller navigation was exercised, and no gameplay or live
+menu integration is claimed. Those are the next experimental milestones.
+
+Reference boundary
+------------------
+Earlier System-menu leads came from the locally checked-out bbhost reference
+(GPL-3.0), as recorded in equipment-ui-research.md. Its gfx_dump.py and
+gfx_world.py were used as inspection tools. The new checker was independently
+written from ELF/SWF field layouts and local evidence. No bbhost implementation
+was copied into the framework or SDK during this investigation.

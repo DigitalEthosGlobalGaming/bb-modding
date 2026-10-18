@@ -35,6 +35,10 @@ modhost *modhost_create(const modhost_config *cfg) {
     plat_mkdirs(h->cache_dir);
     /* Shadow copies left by a previous run (crash, leaked DLL) are stale now. */
     plat_list_dir(h->cache_dir, clear_shadow, h);
+    mh_native_observation_start(h);
+    mh_item_actions_start(h);
+    mh_menu_start(h);
+    if(!h->menu){modhost_destroy(h);return NULL;}
     return h;
 }
 
@@ -46,8 +50,13 @@ static void free_inbox(modhost *h) {
 void modhost_destroy(modhost *h) {
     if (!h) return;
     plat_mutex_lock(h->run_lock);
+    mh_item_actions_stop(h);
+    mh_native_observation_stop(h);
     for (size_t i = h->nmods; i-- > 0;)
         if (h->mods[i].inst) mh_unload(h, &h->mods[i], 0, NULL);
+    mh_menu_stop(h);
+    mh_inventory_stop(h);
+    mh_characters_stop(h);
     mh_deferred_flush(h);
     plat_mutex_unlock(h->run_lock);
     free_inbox(h);
@@ -254,6 +263,12 @@ void modhost_frame(modhost *h) {
     h->gameplay_in_frame = 1;
     drain_inbox(h);
     mh_gameplay_tick(h);
+    mh_equipment_tick(h);
+    mh_inventory_tick(h);
+    mh_characters_tick(h);
+    mh_native_observation_tick(h);
+    mh_item_actions_tick(h);
+    mh_menu_tick(h);
 
     /* One host-owned observation, fanned out to all interested active mods.
      * No subscriber installs a detour or gets a mutable game pointer. Dispatch
@@ -267,12 +282,29 @@ void modhost_frame(modhost *h) {
         struct bbm_mod *m = h->mods[i].inst;
         if (!m || h->mods[i].state != MODHOST_ACTIVE || m->bypassed) continue;
         double t0 = plat_now_s();
-        for (size_t j = 0; j < m->nres && !m->faulted; j++) {
-            if (m->res[j].kind != MH_RES_FRAME) continue;
-            mh_frame_cb *f = m->res[j].p;
-            if (!f->cb) continue;
-            mh_call c = {.kind = MH_CALL_VOID1, .f = (void (*)(void))f->cb, .a = f->user};
-            mh_call_mod(m, &c);
+        /* Registration/release from a callback can move the resource array.
+         * Snapshot IDs and values, then recheck ownership before each call.
+         * Newly registered callbacks start on the next frame. */
+        typedef struct { bbm_id id; mh_frame_cb value; } frame_item;
+        size_t count = 0;
+        for (size_t j = 0; j < m->nres; ++j)
+            if (m->res[j].kind == MH_RES_FRAME) ++count;
+        frame_item local[16];
+        frame_item *items = count > 16 ? calloc(count, sizeof *items) : local;
+        if (items) {
+            size_t at = 0;
+            for (size_t j = 0; j < m->nres; ++j)
+                if (m->res[j].kind == MH_RES_FRAME)
+                    items[at++] = (frame_item){m->res[j].id, *(mh_frame_cb *)m->res[j].p};
+            for (size_t j = 0; j < count && !m->faulted; ++j) {
+                int live = 0;
+                for (size_t k = 0; k < m->nres; ++k)
+                    if (m->res[k].id == items[j].id && m->res[k].kind == MH_RES_FRAME) { live = 1; break; }
+                if (!live || !items[j].value.cb) continue;
+                mh_call c = {.kind = MH_CALL_VOID1, .f = (void (*)(void))items[j].value.cb, .a = items[j].value.user};
+                mh_call_mod(m, &c);
+            }
+            if (items != local) free(items);
         }
         h->mods[i].frame_ms = (plat_now_s() - t0) * 1000.0;
         if (h->mods[i].frame_ms > 2.0)
@@ -348,7 +380,8 @@ void modhost_draw_panels(modhost *h) {
                 h->current_panel_mod = m;
                 mh_call c = {.kind = MH_CALL_VOID1, .f = (void (*)(void))p->draw, .a = p->user};
                 mh_call_mod(m, &c);
-                h->current_panel_mod = NULL;
+                mh_ui_tables_cleanup(m);
+            h->current_panel_mod = NULL;
             }
             ui->end_panel(ui->user);
         }

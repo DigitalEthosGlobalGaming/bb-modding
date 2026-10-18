@@ -70,7 +70,7 @@ static size_t claims(modhost *h, uint32_t field, claim *out) {
     size_t n=0;
     for (size_t i=0;i<h->nmods;++i) {
         struct bbm_mod *m=h->mods[i].inst;
-        if (!m || m->faulted || m->bypassed || h->mods[i].state!=MODHOST_ACTIVE) continue;
+        if (!m || m->faulted || m->bypassed || (field && h->mods[i].state!=MODHOST_ACTIVE)) continue;
         for (size_t j=0;j<m->nres;++j) {
             if (m->res[j].kind!=MH_RES_PLAYER_MODIFIER) continue;
             player_modifier *v=m->res[j].p;
@@ -119,7 +119,8 @@ static bbm_status adjust(bbm_handle self,uint32_t field,uint64_t generation,int3
     }
     int64_t value=(int64_t)current+change;
     int32_t minimum=field==BBM_RESOURCE_HEALTH ? 1:0;
-    if(value<minimum)value=minimum; if(value>maximum)value=maximum;
+    if(value<minimum)value=minimum;
+    if(value>maximum)value=maximum;
     int32_t replacement=(int32_t)value;
     rc=mh_gameplay_read(h,&again); if(rc!=BBM_OK)goto done;
     if(memcmp(&before,&again,sizeof before)) {rc=BBM_ERR_STATE;goto done;}

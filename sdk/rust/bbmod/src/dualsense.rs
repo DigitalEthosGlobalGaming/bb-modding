@@ -34,30 +34,39 @@ pub fn raw(bytes: [u8; 11]) -> Effect {
     Effect(bytes)
 }
 impl Cx {
-    fn pad_api(&self) -> Result<&sys::bbm_host> {
-        // Read the prefix before forming a reference to the extended table.
+    fn pad_field(&self, end: usize) -> Result<()> {
         let size = unsafe { core::ptr::addr_of!((*self.host).size).read() } as usize;
-        if size >= core::mem::size_of::<sys::bbm_host>() {
-            Ok(unsafe { &*self.host })
-        } else {
-            Err(Error::UNSUPPORTED)
-        }
+        if size >= end { Ok(()) } else { Err(Error::UNSUPPORTED) }
     }
     pub fn pad_info(&self) -> Result<PadInfo> {
-        let h = self.pad_api()?;
+        self.pad_field(core::mem::offset_of!(sys::bbm_host, pad_info) + core::mem::size_of::<usize>())?;
         let mut out = PadInfo::default();
-        check(unsafe { (h.pad_info)(self.me, &mut out) })?;
+        check(unsafe { (core::ptr::addr_of!((*self.host).pad_info).read())(self.me, &mut out) })?;
         Ok(out)
     }
     pub fn pad_trigger(&self, which: Trigger, effect: Effect) -> Result<()> {
-        check(unsafe { (self.pad_api()?.pad_trigger)(self.me, which as u32, effect.0.as_ptr()) })
+        self.pad_field(core::mem::offset_of!(sys::bbm_host, pad_trigger) + core::mem::size_of::<usize>())?;
+        check(unsafe { (core::ptr::addr_of!((*self.host).pad_trigger).read())(self.me, which as u32, effect.0.as_ptr()) })
     }
     pub fn pad_release(&self, which: Trigger) -> Result<()> {
-        check(unsafe { (self.pad_api()?.pad_release)(self.me, which as u32) })
+        self.pad_field(core::mem::offset_of!(sys::bbm_host, pad_release) + core::mem::size_of::<usize>())?;
+        check(unsafe { (core::ptr::addr_of!((*self.host).pad_release).read())(self.me, which as u32) })
     }
     pub fn pad_lightbar(&self, rgb: [u8; 3]) -> Result<()> {
-        check(unsafe { (self.pad_api()?.pad_lightbar)(self.me, rgb[0], rgb[1], rgb[2]) })
+        self.pad_field(core::mem::offset_of!(sys::bbm_host, pad_lightbar) + core::mem::size_of::<usize>())?;
+        check(unsafe { (core::ptr::addr_of!((*self.host).pad_lightbar).read())(self.me, rgb[0], rgb[1], rgb[2]) })
     }
+    /// Replace the current finite grip waveform. 48 kHz stereo, at most 250 ms,
+    /// samples in [-0.5,0.5]. Empty data stops and releases the host-owned stream.
+    /// USB only; unsupported on older hosts or without a suitable audio endpoint.
+    pub fn pad_haptics(&self, stereo: &[[f32; 2]]) -> Result<()> {
+        if stereo.len() > 12000 || stereo.iter().flatten().any(|x| !x.is_finite() || x.abs() > 0.5) {
+            return Err(Error::ARG);
+        }
+        self.pad_field(core::mem::offset_of!(sys::bbm_host, pad_haptics) + core::mem::size_of::<usize>())?;
+        check(unsafe { (core::ptr::addr_of!((*self.host).pad_haptics).read())(self.me, stereo.as_ptr().cast(), stereo.len() as u32) })
+    }
+
 }
 #[cfg(test)]
 mod tests {
@@ -70,6 +79,25 @@ mod tests {
             resistance_vibration(15, 63, 128).0,
             [6, 15, 63, 128, 0, 0, 0, 0, 0, 0, 0]
         );
+    }
+    #[test]
+    fn older_host_keeps_triggers_but_rejects_haptics() {
+        // An actual truncated ABI table: do not form a full bbm_host reference.
+        let end = core::mem::offset_of!(sys::bbm_host, pad_info) + core::mem::size_of::<usize>();
+        let mut storage = vec![0usize; end / core::mem::size_of::<usize>()];
+        let host = storage.as_mut_ptr().cast::<sys::bbm_host>();
+        unsafe extern "C" fn info(_: sys::bbm_handle, out: *mut PadInfo) -> i32 {
+            unsafe { out.write(PadInfo::default()); } 0
+        }
+        unsafe {
+            core::ptr::addr_of_mut!((*host).size).write(end as u32);
+            core::ptr::addr_of_mut!((*host).pad_info).write(info);
+        }
+        let cx = Cx::new(host, core::ptr::null_mut());
+        assert!(cx.pad_info().is_ok());
+        assert_eq!(cx.pad_haptics(&[]), Err(Error::UNSUPPORTED));
+        assert_eq!(cx.pad_haptics(&[[f32::NAN,0.0]]), Err(Error::ARG));
+        assert_eq!(cx.pad_haptics(&vec![[0.0;2];12001]), Err(Error::ARG));
     }
     #[test]
     fn c_layout() {

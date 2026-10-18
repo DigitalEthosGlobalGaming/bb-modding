@@ -18,7 +18,19 @@ add_library(bbmod_host STATIC
     host/src/vfs.c
     host/src/net.c
     host/src/gameplay.c
+    host/src/equipment.c
+    host/src/characters.c
+    host/src/characters_service.c
+    host/src/inventory.c
+    host/src/inventory_service.c
+    host/src/equipment_service.c
+    host/src/item_actions.c
+    host/src/native_attack.c
+    host/src/native_observation.c
+    host/src/ui_tables.c
     host/src/ui_slots.c
+    host/src/native_menu.c
+    host/src/native_menu_bridge.c
     host/src/pad.c
     host/src/platform_posix.c
     host/src/platform_win.c

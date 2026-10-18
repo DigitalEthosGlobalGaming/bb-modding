@@ -85,6 +85,7 @@ typedef enum mh_res_kind {
     MH_RES_FRAME,
     MH_RES_PANEL,
     MH_RES_UI_CONTRIBUTION,
+    MH_RES_NATIVE_MENU,
     MH_RES_THREAD,
     MH_RES_FILE,
     MH_RES_CHANNEL,
@@ -181,6 +182,7 @@ struct bbm_mod {
     int faulted;  /* crashed: never call into it again, only revert and unmap */
     int leak_lib; /* a mod thread would not stop: keep the DLL mapped */
     uint32_t events;
+    int ui_table_open;
     char last_error[MH_ERR];
 };
 
@@ -235,6 +237,7 @@ typedef struct mh_in {
 } mh_in;
 
 struct modhost {
+    struct mh_menu_service *menu;
     modhost_config cfg;
     plat_mutex *run_lock; /* recursive: frame, panels, load/unload */
     plat_mutex *vfs_lock;
@@ -243,7 +246,7 @@ struct modhost {
     size_t nin;
     uint8_t keys_now[BBM_KEY_COUNT], keys_prev[BBM_KEY_COUNT];
     uint32_t pad_now, pad_prev;
-    struct bbm_mod *trigger_owner[2], *led_owner;
+    struct bbm_mod *trigger_owner[2], *led_owner, *haptics_owner;
     uint8_t trigger_desired[2][11], trigger_sent[2][11], led[3], led_sent[3];
     int pad_valid, led_valid, pad_failed, pad_urgent, pad_capture;
     uint64_t pad_device, pad_next_ms;
@@ -269,7 +272,11 @@ struct modhost {
     size_t nvfs, capvfs;
     int vfs_any;
 
+    struct mh_inventory_state *inventory;
+    struct mh_characters_state *characters;
     bbm_player_snapshot player_last;
+    bbm_equipment_snapshot equipment_last;
+    int equipment_profile_state;
     uint64_t player_generation;
     uintptr_t player_actor, player_component;
     int player_available;
@@ -367,7 +374,25 @@ void mh_pad_fill(bbm_host *api);
 void mh_pad_release_owner(struct bbm_mod *m);
 void mh_pad_tick(modhost *h, uint64_t now);
 
+void mh_inventory_fill(bbm_host *api);
+void mh_inventory_tick(modhost *h);
+void mh_inventory_stop(modhost *h);
 void mh_gameplay_fill(bbm_host *api);
+void mh_equipment_fill(bbm_host *api);
+void mh_equipment_tick(modhost *h);
+void mh_item_actions_start(modhost*h);
+void mh_item_actions_tick(modhost*h);
+void mh_item_actions_stop(modhost*h);
+void mh_item_actions_cancel(struct bbm_mod*m);
+void mh_item_actions_fill(bbm_host*a);
+void mh_native_observation_start(modhost *h);
+void mh_menu_fill(bbm_host *api);
+void mh_menu_start(modhost *h);
+void mh_menu_tick(modhost *h);
+void mh_menu_stop(modhost *h);
+void mh_menu_release(struct bbm_mod *m, void *p);
+void mh_native_observation_tick(modhost *h);
+void mh_native_observation_stop(modhost *h);
 void mh_gameplay_tick(modhost *h);
 bbm_status mh_gameplay_read(modhost *h, bbm_player_snapshot *out);
 
@@ -377,3 +402,10 @@ void mh_path_join(char *out, size_t cap, const char *a, const char *b);
 void mh_lower(char *s);
 
 #endif
+
+void mh_characters_fill(bbm_host*);
+void mh_characters_tick(modhost*);
+void mh_characters_stop(modhost*);
+
+void mh_ui_tables_fill(bbm_host*);
+void mh_ui_tables_cleanup(struct bbm_mod*);

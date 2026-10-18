@@ -25,13 +25,24 @@ mod detour;
 mod entry;
 pub mod key;
 pub mod dualsense;
+pub mod gameplay;
+pub mod characters;
+pub mod character_definitions;
+pub mod character_references;
+pub mod inventory;
+pub mod items;
+pub mod item_actions;
+pub mod content;
+pub mod equipment;
+pub mod native_menu;
 mod ui;
 
 pub use bbmod_sys as sys;
+pub use character_definitions::{get_character_definition,CharacterDefinition,NpcParamId};
 pub use cx::{Channel, Cx, Event, Id, Reader, SessionInfo};
 pub use detour::{Detour, InflightGuard, __detour_panicked};
 pub use entry::{Mod, __internal};
-pub use ui::Ui;
+pub use ui::{Ui,Table};
 
 /// A read-only observation from the host's single controller sampling point.
 /// Delivery uses the normal serialized Mod::event callback. Observers must not

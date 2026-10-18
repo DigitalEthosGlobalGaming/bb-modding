@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/vawser/Smithbox",
+  "commit": "cbd477a8fd6d436b3e011c8548e1de8fd8876918",
+  "license": "MIT",
+  "files": [
+    {
+      "file": "npc-english.json",
+      "url": "https://raw.githubusercontent.com/vawser/Smithbox/cbd477a8fd6d436b3e011c8548e1de8fd8876918/src/Smithbox.Data/Assets/PARAM/BB/Param%20Row%20Names/English/NpcParam.json",
+      "sha256": "b8c496683f3fbfcebc3abecef69acf75635e3562b7bbf08bcbb48df1e6af8e78"
+    },
+    {
+      "file": "npc-japanese.json",
+      "url": "https://raw.githubusercontent.com/vawser/Smithbox/cbd477a8fd6d436b3e011c8548e1de8fd8876918/src/Smithbox.Data/Assets/PARAM/BB/Param%20Row%20Names/Japanese/NpcParam.json",
+      "sha256": "6b6177ffa9ec8dc816deb26170d7835ed03363bcf00c6a86b01de892975b7e73"
+    },
+    {
+      "file": "teams.json",
+      "url": "https://raw.githubusercontent.com/vawser/Smithbox/cbd477a8fd6d436b3e011c8548e1de8fd8876918/src/Smithbox.Data/Assets/PARAM/BB/Param%20Enums/TEAM_TYPE.json",
+      "sha256": "834cf19b01f1ff6aad6bf963e234dccb619d02d1e8cf3a8460d604402cd52d10"
+    },
+    {
+      "file": "LICENSE",
+      "url": "https://raw.githubusercontent.com/vawser/Smithbox/cbd477a8fd6d436b3e011c8548e1de8fd8876918/LICENSE",
+      "sha256": "7027ea29685980fb09e6716e3771c5c57765588b0b4d6c295144fb7fe3e1fa21"
+    }
+  ]
+}

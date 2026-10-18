@@ -52,5 +52,16 @@ Apply it with bbmod checked out at `third_party/bbmod`; see MODDING.md step 1.
   watcher reloaded Inspector after a timestamp change; both shared-input subscribers logged
   matching real controller transitions. A rebuilt Inspector behavior change has not been
   tested live (the watcher check used the same binary).
-* Damage/health/function detours still need game-specific discovery and signature validation.
-  Existing declarations for area/save events do not mean those game producers are wired up.
+* ABI 1.4 adds validated sampled HP/stamina and experimental equipment producers,
+  a guarded explicit adjustment pipeline, and shared overlay slots. Native item-use
+  observation has a distinct queued producer; it is not a controller-input inference.
+  Limited native behavior/attack-path observations report behavior IDs and sources,
+  not unique swings/hits or weapon attribution. Native incoming-damage interception
+  remains unverified. Existing area/save declarations do not mean those producers are wired.
+* See [current developer docs](../../../../modding-docs/README.md) for the supported
+  contracts, native producer status and live-versus-synthetic validation boundaries.
+* ABI 1.5 appends bounded queued item awards, serviced at a fingerprinted native
+  player update point after validating the player generation and loaded PARAM row.
+  Offline signatures and synthetic detour tests pass; real-game grants and new
+  content remain pending validation. Content compilation and extraction run
+  offline, not at game startup. This does not add a verified hit/damage callback.

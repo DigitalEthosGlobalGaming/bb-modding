@@ -11,6 +11,16 @@ bbport 1.9; stock bbport 1.8.2 does not gain mod support by copying these files.
 
 ## Downloads
 
+The `develop` branch includes the current workspace implementation: shared
+equipment/inventory and character observations, exact item/character catalogs,
+content item awards, USB grip-haptics output, sortable overlay tables and native
+menu registration/guest adapters. These are experimental services; capability
+and table-size checks remain required. See [the SDK](docs/RUST_SDK.md) and
+[workspace development notes](docs/workspace/README.md) for scope and limitations.
+The port integration patch predates these additions; using the new SDK alone
+does not install the corresponding port backends. Inspector remains excluded
+under the existing redistribution policy in [LICENSING.md](LICENSING.md).
+
 The **Build and package** Actions workflow tests Linux and native Windows. Each
 successful Windows build uploads a developer ZIP and SHA-256 checksum in the
 run's Artifacts. A `v*` tag creates a **draft GitHub Release** after both platform

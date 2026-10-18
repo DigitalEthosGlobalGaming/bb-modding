@@ -63,6 +63,7 @@ static void call_thunk(void *p) {
 void mh_mod_faulted(struct bbm_mod *m, const char *what) {
     modhost *h = m->host;
     if (m->faulted) return;
+    mh_item_actions_cancel(m);
     m->faulted = 1;
     m->bypassed = 1;
     for (size_t j = 0; j < m->nres; j++)
@@ -121,6 +122,7 @@ static void release_res(struct bbm_mod *m, mh_res *r) {
     case MH_RES_PLAYER_MODIFIER: free(r->p); break;
     case MH_RES_PANEL: free(r->p); break;
     case MH_RES_UI_CONTRIBUTION: free(r->p); break;
+    case MH_RES_NATIVE_MENU: mh_menu_release(m,r->p); break;
     case MH_RES_FILE: {
         mh_file *f = r->p;
         mh_vfs_remove_owner(h, m, f->game_path);
@@ -461,7 +463,13 @@ void mh_fill_api(bbm_host *a) {
     a->abi_minor = BBM_ABI_MINOR;
     mh_pad_fill(a);
     mh_gameplay_fill(a);
+    mh_equipment_fill(a);
+    mh_inventory_fill(a);
+    mh_characters_fill(a);
+    mh_item_actions_fill(a);
     mh_ui_slots_fill_api(a);
+    mh_ui_tables_fill(a);
+    mh_menu_fill(a);
     a->log = api_log;
     a->last_error = api_last_error;
     a->alloc = api_alloc;

@@ -337,6 +337,32 @@ impl Cx {
         Ok(Id(id))
     }
 
+    /// Serialized game-thread callback with mutable SDK access for dynamically
+    /// registering owned resources. The host must not re-enter this mod while
+    /// the callback runs. Existing `on_frame` remains sufficient for reads and
+    /// requests that do not register new Rust closures.
+    /// Releasing a registration stops delivery, but its Rust closure allocation
+    /// remains owned by Cx until mod destruction, just like panel/on_frame.
+    /// Avoid unbounded re-registration loops in long-lived mods.
+    pub fn on_frame_mut(&mut self, f: impl FnMut(&mut Cx) + 'static) -> Result<Id> {
+        struct F { cx: *mut Cx, f: Box<dyn FnMut(&mut Cx)> }
+        unsafe extern "C" fn tramp(user: *mut c_void) {
+            let s = &mut *(user as *mut F);
+            // The callback box is separate from Cx and remains at a stable
+            // address if registration grows Cx::owned. No shared Cx reference
+            // is created here while the user's exclusive reference is live.
+            let cx = &mut *s.cx;
+            let f = &mut s.f;
+            crate::entry::guard("mutable frame callback", || f(cx));
+        }
+        let mut b = Box::new(F { cx: self as *mut Cx, f: Box::new(f) });
+        let user = (&mut *b as *mut F).cast::<c_void>();
+        let mut id = 0;
+        check(unsafe { (self.h().on_frame)(self.me, tramp, user, &mut id) })?;
+        self.owned.push(b);
+        Ok(Id(id))
+    }
+
     /// Host-managed worker thread. `f` should return when `stop()` is true.
     pub fn spawn(&mut self, f: impl FnOnce(&dyn Fn() -> bool) + Send + 'static) -> Result<Id> {
         struct Job(Option<Box<dyn FnOnce(&dyn Fn() -> bool) + Send>>);

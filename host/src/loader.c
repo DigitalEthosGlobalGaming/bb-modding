@@ -320,6 +320,7 @@ int mh_unload(modhost *h, mh_entry *e, int keep_state, bbm_blob *state_out) {
     struct bbm_mod *m = e->inst;
     if (!m) { if (e->state != MODHOST_FAULTED) e->state = MODHOST_UNLOADED; mh_vfs_rebuild_assets(h); return 0; }
 
+    mh_item_actions_cancel(m);
     /* 1. Route hooks past the mod so new calls skip it. */
     m->bypassed = 1;
     for (size_t i = 0; i < m->nres; i++)

@@ -1,0 +1,123 @@
+{
+  "source": "https://raw.githubusercontent.com/Grimrukh/soulstruct/12b69189a2ccebbc623a1b6565be89a18d6c9958/src/soulstruct/bloodborne/events/enums.py",
+  "source_sha256": "74cd4a75ba3fd99a8082d4e619ac8cfd53030ea3654f023c46e7f50d83c9e9b2",
+  "note": "Factual Bloodborne TeamType codes and symbols, not runtime behavior guarantees.",
+  "entries": [
+    {
+      "id": -1,
+      "symbol": "Default"
+    },
+    {
+      "id": 0,
+      "symbol": "NoTeam"
+    },
+    {
+      "id": 1,
+      "symbol": "Human"
+    },
+    {
+      "id": 2,
+      "symbol": "WhitePhantom"
+    },
+    {
+      "id": 3,
+      "symbol": "BlackPhantom"
+    },
+    {
+      "id": 4,
+      "symbol": "Hollow"
+    },
+    {
+      "id": 5,
+      "symbol": "Vagrant"
+    },
+    {
+      "id": 6,
+      "symbol": "Enemy"
+    },
+    {
+      "id": 7,
+      "symbol": "Boss"
+    },
+    {
+      "id": 8,
+      "symbol": "Ally"
+    },
+    {
+      "id": 9,
+      "symbol": "HostileAlly"
+    },
+    {
+      "id": 10,
+      "symbol": "Decoy"
+    },
+    {
+      "id": 11,
+      "symbol": "RedChild"
+    },
+    {
+      "id": 12,
+      "symbol": "FightingAlly"
+    },
+    {
+      "id": 13,
+      "symbol": "Intruder"
+    },
+    {
+      "id": 14,
+      "symbol": "Neutral"
+    },
+    {
+      "id": 15,
+      "symbol": "Charm"
+    },
+    {
+      "id": 19,
+      "symbol": "Host"
+    },
+    {
+      "id": 20,
+      "symbol": "Coop"
+    },
+    {
+      "id": 21,
+      "symbol": "Hostile"
+    },
+    {
+      "id": 22,
+      "symbol": "WanderingPhantom"
+    },
+    {
+      "id": 23,
+      "symbol": "Enemy1"
+    },
+    {
+      "id": 24,
+      "symbol": "Enemy2"
+    },
+    {
+      "id": 25,
+      "symbol": "StrongEnemy1"
+    },
+    {
+      "id": 26,
+      "symbol": "FriendlyNPC"
+    },
+    {
+      "id": 27,
+      "symbol": "HostileNPC"
+    },
+    {
+      "id": 28,
+      "symbol": "CoopNPC"
+    },
+    {
+      "id": 29,
+      "symbol": "Indiscriminate"
+    },
+    {
+      "id": 30,
+      "symbol": "Object"
+    }
+  ]
+}

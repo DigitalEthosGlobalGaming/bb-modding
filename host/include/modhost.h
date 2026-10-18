@@ -78,6 +78,10 @@ typedef struct modhost_ui_backend {
     /* Required for shared contribution slots: isolate identical widget labels. */
     void (*push_scope)(void *user, const char *owner, const char *key);
     void (*pop_scope)(void *user);
+    int (*table_begin)(void*,const char*,const char*const*,uint32_t,float,int32_t*,int32_t*);
+    void (*table_next_row)(void*);
+    void (*table_next_column)(void*);
+    void (*table_end)(void*);
 } modhost_ui_backend;
 
 typedef struct modhost_pad_backend {
@@ -86,6 +90,7 @@ typedef struct modhost_pad_backend {
     int (*send_triggers)(void *user, const uint8_t *right11, const uint8_t *left11);
     int (*lightbar)(void *user, uint8_t r, uint8_t g, uint8_t b);
     int (*captured)(void *user);
+    int (*haptics)(void *user, const float *stereo, uint32_t frames);
 } modhost_pad_backend;
 
 typedef struct modhost_config {
@@ -112,6 +117,7 @@ typedef struct modhost_config {
     modhost_ui_backend ui;
     modhost_input_backend input;
     modhost_pad_backend pad;
+    int native_observation; /* opt-in verified built-in item observer; default 0 */
 } modhost_config;
 
 typedef enum modhost_state {

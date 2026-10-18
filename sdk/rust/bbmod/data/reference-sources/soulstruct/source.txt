@@ -1,0 +1,1 @@
+https://raw.githubusercontent.com/Grimrukh/soulstruct/12b69189a2ccebbc623a1b6565be89a18d6c9958/src/soulstruct/bloodborne/events/enums.py

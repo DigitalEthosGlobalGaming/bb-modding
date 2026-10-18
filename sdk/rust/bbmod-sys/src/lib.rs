@@ -5,7 +5,7 @@
 use core::ffi::{c_char, c_void};
 
 pub const BBM_ABI_MAJOR: u16 = 1;
-pub const BBM_ABI_MINOR: u16 = 4;
+pub const BBM_ABI_MINOR: u16 = 8;
 
 pub type bbm_status = i32;
 pub const BBM_OK: i32 = 0;
@@ -193,7 +193,43 @@ pub struct bbm_host {
     pub player_adjust: unsafe extern "C" fn(H, u32, u64, i32, i32, *mut i32) -> S,
     pub player_modifier: unsafe extern "C" fn(H, u32, u32, i32, *mut bbm_id) -> S,
     pub ui_contribute: unsafe extern "C" fn(H, Cs, Cs, i32, bbm_panel_cb, *mut c_void, *mut bbm_id) -> S,
+    pub equipment_snapshot: unsafe extern "C" fn(H, *mut bbm_equipment_snapshot) -> S,
+    pub inventory_page: unsafe extern "C" fn(H, u64, u32, u32, *mut bbm_inventory_page) -> S,
+    pub item_give: unsafe extern "C" fn(H, u32, u32, u64, *mut u64) -> S,
+    pub item_give_status: unsafe extern "C" fn(H, u64, *mut bbm_item_give_result) -> S,
+    pub pad_haptics: unsafe extern "C" fn(H, *const f32, u32) -> S,
+    pub characters_page: unsafe extern "C" fn(H, u64, u32, u32, *mut bbm_character_page) -> S,
+    pub ui_table_begin: unsafe extern "C" fn(H,Cs,*const Cs,u32,f32,*mut i32,*mut i32)->i32,
+    pub ui_table_next_row: unsafe extern "C" fn(H),
+    pub ui_table_next_column: unsafe extern "C" fn(H),
+    pub ui_table_end: unsafe extern "C" fn(H),
+    pub menu_register: unsafe extern "C" fn(H,*const bbm_menu_node,*mut bbm_id)->S,
+    pub menu_update: unsafe extern "C" fn(H,bbm_id,*const bbm_menu_node)->S,
+    pub menu_state: unsafe extern "C" fn(H,*mut bbm_menu_state)->S,
 }
+
+pub const BBM_EV_NATIVE_MENU:u32=1<<20;
+#[repr(C)]
+#[derive(Clone,Copy)]
+pub struct bbm_menu_node {
+    pub size:u32,pub kind:u32,pub flags:u32,pub order:i32,pub value:i32,
+    pub key:[c_char;64],pub parent:[c_char;192],pub label:[c_char;128],pub help:[c_char;256],pub target:[c_char;192],
+}
+#[repr(C)]
+#[derive(Clone,Copy)]
+pub struct bbm_menu_state {
+    pub size:u32,pub capabilities:u32,pub revision:u64,pub generation:u64,pub screen:[c_char;192],
+}
+#[repr(C)]
+#[derive(Clone,Copy)]
+pub struct bbm_menu_event {
+    pub size:u32,pub kind:u32,pub generation:u64,pub revision:u64,pub node:u64,pub value:i32,pub reserved:u32,
+    pub control:u64,pub previous_value:i32,pub flags:u32,
+    pub owner:[c_char;128],pub key:[c_char;64],pub screen:[c_char;192],
+}
+impl Default for bbm_menu_node {fn default()->Self{unsafe{core::mem::zeroed()}}}
+impl Default for bbm_menu_state {fn default()->Self{unsafe{core::mem::zeroed()}}}
+impl Default for bbm_menu_event {fn default()->Self{unsafe{core::mem::zeroed()}}}
 
 /// Byte offset just past a field of `bbm_host` (`offset_of!` needs Rust 1.77).
 macro_rules! field_end {
@@ -227,7 +263,79 @@ pub struct bbm_player_snapshot {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct bbm_player_change { pub previous: bbm_player_snapshot, pub current: bbm_player_snapshot }
+pub const BBM_EV_EQUIPMENT_CHANGED: u32 = 1 << 15;
+pub const BBM_EV_ATTACK_OBSERVED: u32 = 1 << 18;
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct bbm_attack_observed {
+    pub size: u32, pub source: u32, pub generation: u64,
+    pub actor: usize, pub behavior_id: i32, pub reserved: u32,
+}
+pub const BBM_EV_ITEM_USE_OBSERVED: u32 = 1 << 16;
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct bbm_item_use {
+    pub size: u32, pub success: u32, pub generation: u64,
+    pub actor: usize, pub item_id: i32, pub reserved: u32,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct bbm_equipment_snapshot {
+    pub size: u32, pub flags: u32, pub generation: u64,
+    pub actor: usize, pub character: usize,
+    pub mode: u32, pub selections: [u32;6], pub runtime_references: [u32;16],
+    pub saved_item_ids: [u32;16], pub selected_even: u32, pub selected_odd: u32,
+    pub reserved: u32,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct bbm_equipment_change { pub previous: bbm_equipment_snapshot, pub current: bbm_equipment_snapshot }
+pub const BBM_EV_INVENTORY_CHANGED: u32 = 1 << 17;
+pub const BBM_INVENTORY_PAGE_SIZE: usize = 64;
+pub const BBM_INVENTORY_MAX_ITEMS: usize = 4096;
+pub const BBM_INVENTORY_AVAILABLE: u32 = 1;
+pub const BBM_INVENTORY_ID_RESOLVED: u32 = 1;
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct bbm_inventory_entry {
+    pub slot: u32, pub reference: u32, pub encoded_item_id: u32, pub quantity: u32,
+    pub metadata_04: u32, pub metadata_0c: u32, pub flags: u32, pub reserved: u32,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct bbm_inventory_summary {
+    pub size: u32, pub flags: u32, pub generation: u64, pub revision: u64,
+    pub actor: usize, pub character: usize, pub slot_count: u32, pub item_count: u32,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct bbm_inventory_page {
+    pub snapshot: bbm_inventory_summary, pub offset: u32, pub count: u32,
+    pub entries: [bbm_inventory_entry; BBM_INVENTORY_PAGE_SIZE],
+}
+impl Default for bbm_inventory_page {
+    fn default() -> Self { Self { snapshot:Default::default(),offset:0,count:0,entries:[bbm_inventory_entry::default();BBM_INVENTORY_PAGE_SIZE] } }
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct bbm_inventory_change { pub previous: bbm_inventory_summary, pub current: bbm_inventory_summary }
+pub const BBM_ITEM_PENDING:u32=1;
+pub const BBM_ITEM_RUNNING:u32=2;
+pub const BBM_ITEM_SUBMITTED:u32=3;
+pub const BBM_ITEM_CANCELLED:u32=4;
+pub const BBM_ITEM_FAILED:u32=5;
+#[repr(C)]
+#[derive(Debug,Clone,Copy,Default)]
+pub struct bbm_item_give_result {
+    pub size:u32,pub state:u32,pub request_id:u64,pub generation:u64,
+    pub encoded_item_id:u32,pub quantity:u32,
+}
 impl bbm_host {
+    pub fn has_characters(&self)->bool {self.size as usize>=field_end!(characters_page)}
+    pub fn has_native_menus(&self)->bool {self.size as usize>=field_end!(menu_state)}
+    pub fn has_item_actions(&self)->bool {self.size as usize>=field_end!(item_give_status)}
+    pub fn has_inventory(&self) -> bool { self.size as usize >= field_end!(inventory_page) }
+    pub fn has_equipment(&self) -> bool { self.size as usize >= field_end!(equipment_snapshot) }
     pub fn has_ui_slots(&self) -> bool { self.size as usize >= field_end!(ui_contribute) }
     pub fn has_gameplay(&self) -> bool { self.size as usize >= field_end!(player_modifier) }
     pub fn has_v1_3(&self) -> bool { self.size as usize >= field_end!(pad_lightbar) }
@@ -253,3 +361,19 @@ pub struct bbm_mod_api {
 
 pub type bbm_entry_fn =
     unsafe extern "C" fn(*const bbm_host, bbm_handle, *mut bbm_mod_api, *mut *mut bbm_ctx) -> S;
+
+// ABI 1.6: sampled loaded characters, with no native AI mutation.
+pub const BBM_EV_CHARACTERS_CHANGED:u32=1<<19;
+#[repr(C)]
+#[derive(Debug,Clone,Copy,Default,PartialEq,Eq)]
+pub struct bbm_character {
+ pub size:u32,pub flags:u32,pub token:u64,pub handle:u32,pub kind:u32,
+ pub health:i32,pub max_health:i32,pub team_type:i32,pub npc_param:i32,pub name_id:i32,pub script_value:i32,
+ pub backread_state:i32,pub update_interval:i32,
+}
+#[repr(C)]
+#[derive(Debug,Clone,Copy,Default,PartialEq,Eq)]
+pub struct bbm_character_summary {pub size:u32,pub flags:u32,pub revision:u64,pub epoch:u64,pub count:u32,pub reserved:u32}
+#[repr(C)]
+#[derive(Debug,Clone,Copy,Default)]
+pub struct bbm_character_page {pub snapshot:bbm_character_summary,pub offset:u32,pub count:u32,pub entries:[bbm_character;32]}
