@@ -25,14 +25,35 @@ if (Test-Path $stage) { throw "Output already exists: $stage" }
 New-Item -ItemType Directory -Path "$stage/source", "$stage/lib", "$stage/bbmods", "$stage/dependencies/zydis/source" -Force | Out-Null
 # Git's tracked-file lists exclude caches, local settings and unrelated workspace files.
 function Copy-Tracked([string]$Repo, [string]$Destination) {
-    $paths = & git -C $Repo ls-files --recurse-submodules
+    $entries = & git -C $Repo ls-files --stage --recurse-submodules
     if ($LASTEXITCODE -ne 0) { throw "Cannot enumerate source: $Repo" }
-    foreach ($relative in $paths) {
+    $links = @()
+    foreach ($entry in $entries) {
+        if ($entry -notmatch '^(\d+) ([0-9a-f]+) \d\t(.+)$') { throw "Invalid tracked entry: $entry" }
+        $mode = $Matches[1]; $object = $Matches[2]; $relative = $Matches[3]
+        if ($mode -eq '120000') {
+            $target = & git -C $Repo cat-file blob $object
+            if ($LASTEXITCODE -ne 0) { throw "Cannot read link: $relative" }
+            $links += @{ path = $relative; target = $target }
+            continue
+        }
         $src = Join-Path $Repo $relative
         if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { throw "Missing source: $src" }
         $dest = Join-Path $Destination $relative
         New-Item -ItemType Directory -Force (Split-Path $dest -Parent) | Out-Null
         Copy-Item -LiteralPath $src -Destination $dest
+    }
+    # Materialise tracked aliases from already-filtered files, avoiding .git
+    # metadata and differences in Windows symlink checkout configuration.
+    foreach ($link in $links) {
+        $dest = Join-Path $Destination $link.path
+        $target = [IO.Path]::GetFullPath((Join-Path (Split-Path $dest -Parent) $link.target))
+        $boundary = [IO.Path]::GetFullPath($Destination).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+        if (-not $target.StartsWith($boundary, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Source alias escapes archive: $($link.path)"
+        }
+        New-Item -ItemType Directory -Force (Split-Path $dest -Parent) | Out-Null
+        Copy-Item -LiteralPath $target -Destination $dest -Recurse
     }
 }
 Copy-Tracked (Get-Location).Path "$stage/source"
